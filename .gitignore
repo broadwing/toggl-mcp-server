@@ -15,3 +15,6 @@ __pycache__/
 
 # uv (optional if you rebuild env fresh)
 !uv.lock
+
+# IDE
+.idea

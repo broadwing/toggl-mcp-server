@@ -7,15 +7,18 @@ from base64 import b64encode
 from tzlocal import get_localzone
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+import json
 
 load_dotenv()
 
-auth_email = os.getenv("EMAIL")
-auth_password = os.getenv("PASSWORD") 
+auth_email = os.getenv("TOGGL_EMAIL")
+auth_password = os.getenv("TOGGL_PASSWORD")
+
+organization_id = os.getenv("ORGANIZATION_ID")
 
 mcp = FastMCP("toggl")
 
-auth_credentials = f"{os.getenv('EMAIL')}:{os.getenv('PASSWORD')}".encode('utf-8')
+auth_credentials = f"{auth_email}:{auth_password}".encode('utf-8')
 auth_header = f"Basic {b64encode(auth_credentials).decode('ascii')}"
 
 headers={
@@ -545,7 +548,7 @@ async def _get_time_entry_id_by_name(time_entry_name: str, workspace_id: int) ->
     time_entries_response = await _get_time_entries()
 
     if "error" in time_entries_response:
-        return f"Error fetching time_entries: {time_entries_response["error"]}"
+        return f"Error fetching time_entries: {time_entries_response['error']}"
     
     for time_entry in time_entries_response:
         if time_entry.get("description") == time_entry_name:
@@ -1234,6 +1237,945 @@ async def get_time_entries_for_range(
 
     filtered = [entry for entry in all_entries if _in_range(entry)]
     return filtered
+
+@mcp.tool()
+async def get_organization_users(
+        workspaces: Optional[List[str]] = None,
+        name_or_email: Optional[str] = None,
+        active_status: Optional[str] = None,
+        only_admins: Optional[bool] = None,
+        groups: Optional[List[str]] = None
+) -> Union[dict[str, Any], str]:
+    """
+    Get a list of users in a Toggl organization with their details including emails.
+
+    Requires organization admin permissions to access user data.
+
+    Args:
+        workspaces (List, str, optional): List of workspaces to be searched
+        name_or_email (str, optional): The name or email of a user being searched for
+        active_status (str, optional): Filter by user status ('active', 'inactive', 'invited')
+        only_admins (bool, optional): If true returns admins only
+        groups (List, str, optional): List of group IDs. Returns users belonging to these groups
+
+    Returns:
+        dict: User data on success containing list of users with their details
+        str: Error message on failure
+    """
+
+    response = await _get_organization_users_helper(
+        workspaces=workspaces,
+        name_or_email=name_or_email,
+        active_status=active_status,
+        only_admins=only_admins,
+        groups=groups
+    )
+
+    return response
+
+
+async def _get_organization_users_helper(
+        workspaces: Optional[List[str]] = None,
+        name_or_email: Optional[str] = None,
+        active_status: Optional[str] = None,
+        only_admins: Optional[bool] = None,
+        groups: Optional[List[str]] = None
+) -> Union[dict[str, Any], str]:
+
+    url = f"https://api.track.toggl.com/api/v9/organizations/{organization_id}/users"
+
+    payload = {
+        "workspaces": workspaces,
+        "filter": name_or_email,
+        "active_status": active_status,
+        "only_admins": only_admins,
+        "groups": groups
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                url,
+                headers=headers,
+                params=payload
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                try:
+                    error_data = e.response.json()
+                    error_message = error_data.get('message', 'Bad request')
+                except:
+                    error_message = e.response.text
+                return f"Bad request: {error_message}"
+            elif e.response.status_code == 403:
+                return "Workspace not found/accessible or insufficient permissions"
+            elif e.response.status_code == 500:
+                return "Internal Server Error"
+            return f"HTTP error: {e.response.status_code}"
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def search_time_entries_summary_report(
+        workspace_name: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        description: Optional[str] = None,
+        project_ids: Optional[List[int]] = None,
+        client_ids: Optional[List[int]] = None,
+        user_ids: Optional[List[int]] = None,
+        tag_ids: Optional[List[int]] = None,
+        task_ids: Optional[List[int]] = None,
+        time_entry_ids: Optional[List[int]] = None,
+        group_ids: Optional[List[int]] = None,
+        billable: Optional[bool] = None,
+        min_duration_seconds: Optional[int] = None,
+        max_duration_seconds: Optional[int] = None,
+        grouping: Optional[str] = None,
+        sub_grouping: Optional[str] = None,
+        distinguish_rates: Optional[bool] = None,
+        include_time_entry_ids: Optional[bool] = None,
+        rounding: Optional[int] = None,
+        rounding_minutes: Optional[int] = None,
+) -> Union[dict[str, Any], str]:
+    """
+    Search time entries for summary report with flexible filtering options.
+
+    Returns time entries for summary report according to the given filters using the Toggl Reports API v3.
+    This endpoint supports extensive filtering by projects, clients, users, tags, duration, billable status, and more.
+
+    Args:
+        workspace_name (str, optional): Name of the workspace. Defaults to user's default workspace.
+        start_date (str, optional): Start date in YYYY-MM-DD format. Should be less than end_date.
+        end_date (str, optional): End date in YYYY-MM-DD format. Should be greater than start_date.
+        start_time (str, optional): Start time filter.
+        end_time (str, optional): End time filter.
+        description (str, optional): Description filter for time entries.
+        project_ids (List[int], optional): Project IDs to filter by. Use [null] for entries with no projects.
+        client_ids (List[int], optional): Client IDs to filter by. Use [null] for entries with no clients.
+        user_ids (List[int], optional): User IDs to filter by.
+        tag_ids (List[int], optional): Tag IDs to filter by. Use [null] for entries with no tags.
+        task_ids (List[int], optional): Task IDs to filter by. Use [null] for entries with no tasks.
+        time_entry_ids (List[int], optional): Specific time entry IDs to filter by.
+        group_ids (List[int], optional): Group IDs to filter by.
+        billable (bool, optional): Filter by billable status (premium feature).
+        min_duration_seconds (int, optional): Minimum duration in seconds.
+        max_duration_seconds (int, optional): Maximum duration in seconds.
+        grouping (str, optional): Grouping option for results.
+        sub_grouping (str, optional): Sub-grouping option for results.
+        distinguish_rates (bool, optional): Create new subgroups for each rate. Default false.
+        include_time_entry_ids (bool, optional): Include time entry IDs in results. Default false.
+        rounding (int, optional): Whether time should be rounded.
+        rounding_minutes (int, optional): Rounding minutes value. Must be 0, 1, 5, 6, 10, 12, 15, 30, 60 or 240.
+
+    Returns:
+        dict: Time entries data matching the search criteria
+        str: Error message on failure
+    """
+
+    if workspace_name is None:
+        workspace_id = await _get_default_workspace_id()
+    else:
+        workspace_id = await _get_workspace_id_by_name(workspace_name)
+
+    if isinstance(workspace_id, str):  # Error message
+        return workspace_id
+
+    # Make the API call using existing helper
+    response = await _search_time_entries_report_helper(
+        workspace_id=workspace_id,
+        type="summary",
+        start_date=start_date,
+        end_date=end_date,
+        start_time=start_time,
+        end_time=end_time,
+        description=description,
+        project_ids=project_ids,
+        client_ids=client_ids,
+        user_ids=user_ids,
+        tag_ids=tag_ids,
+        task_ids=task_ids,
+        time_entry_ids=time_entry_ids,
+        group_ids=group_ids,
+        billable=billable,
+        min_duration_seconds=min_duration_seconds,
+        max_duration_seconds=max_duration_seconds,
+        grouping=grouping,
+        sub_grouping=sub_grouping,
+        distinguish_rates=distinguish_rates,
+        include_time_entry_ids=include_time_entry_ids,
+        rounding=rounding,
+        rounding_minutes=rounding_minutes
+    )
+
+    return response
+
+@mcp.tool()
+async def search_time_entries_detailed_report(
+        workspace_name: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        description: Optional[str] = None,
+        project_ids: Optional[List[int]] = None,
+        client_ids: Optional[List[int]] = None,
+        user_ids: Optional[List[int]] = None,
+        tag_ids: Optional[List[int]] = None,
+        task_ids: Optional[List[int]] = None,
+        time_entry_ids: Optional[List[int]] = None,
+        group_ids: Optional[List[int]] = None,
+        billable: Optional[bool] = None,
+        min_duration_seconds: Optional[int] = None,
+        max_duration_seconds: Optional[int] = None,
+        grouped: Optional[bool] = None,
+) -> Union[dict[str, Any], str]:
+    """
+    Search time entries for detailed report with flexible filtering options.
+
+    Returns time entries for detailed report according to the given filters using the Toggl Reports API v3.
+    This endpoint supports extensive filtering by projects, clients, users, tags, duration, billable status, and more.
+
+    Args:
+        workspace_name (str, optional): Name of the workspace. Defaults to user's default workspace.
+        start_date (str, optional): Start date in YYYY-MM-DD format. Should be less than end_date.
+        end_date (str, optional): End date in YYYY-MM-DD format. Should be greater than start_date.
+        start_time (str, optional): Start time filter.
+        end_time (str, optional): End time filter.
+        description (str, optional): Description filter for time entries.
+        project_ids (List[int], optional): Project IDs to filter by. Use [null] for entries with no projects.
+        client_ids (List[int], optional): Client IDs to filter by. Use [null] for entries with no clients.
+        user_ids (List[int], optional): User IDs to filter by.
+        tag_ids (List[int], optional): Tag IDs to filter by. Use [null] for entries with no tags.
+        task_ids (List[int], optional): Task IDs to filter by. Use [null] for entries with no tasks.
+        time_entry_ids (List[int], optional): Specific time entry IDs to filter by.
+        group_ids (List[int], optional): Group IDs to filter by.
+        billable (bool, optional): Filter by billable status (premium feature).
+        min_duration_seconds (int, optional): Minimum duration in seconds.
+        max_duration_seconds (int, optional): Maximum duration in seconds.
+        grouped (bool, optional): Whether time entries should be grouped.
+
+    Returns:
+        dict: Time entries data matching the search criteria
+        str: Error message on failure
+    """
+
+    if workspace_name is None:
+        workspace_id = await _get_default_workspace_id()
+    else:
+        workspace_id = await _get_workspace_id_by_name(workspace_name)
+
+    if isinstance(workspace_id, str):  # Error message
+        return workspace_id
+
+    # Make the API call using existing helper
+    response = await _search_time_entries_report_helper(
+        workspace_id=workspace_id,
+        type="search",
+        start_date=start_date,
+        end_date=end_date,
+        start_time=start_time,
+        end_time=end_time,
+        description=description,
+        project_ids=project_ids,
+        client_ids=client_ids,
+        user_ids=user_ids,
+        tag_ids=tag_ids,
+        task_ids=task_ids,
+        time_entry_ids=time_entry_ids,
+        group_ids=group_ids,
+        billable=billable,
+        min_duration_seconds=min_duration_seconds,
+        max_duration_seconds=max_duration_seconds,
+        grouped=grouped,
+    )
+
+    return response
+
+@mcp.tool()
+async def search_time_entries_weekly_report(
+        workspace_name: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        description: Optional[str] = None,
+        project_ids: Optional[List[int]] = None,
+        client_ids: Optional[List[int]] = None,
+        user_ids: Optional[List[int]] = None,
+        tag_ids: Optional[List[int]] = None,
+        task_ids: Optional[List[int]] = None,
+        time_entry_ids: Optional[List[int]] = None,
+        group_ids: Optional[List[int]] = None,
+        billable: Optional[bool] = None,
+        min_duration_seconds: Optional[int] = None,
+        max_duration_seconds: Optional[int] = None,
+        rounding: Optional[int] = None,
+        rounding_minutes: Optional[int] = None,
+) -> Union[dict[str, Any], str]:
+    """
+    Search time entries for weekly report with flexible filtering options.
+
+    Returns time entries for detailed report according to the given filters using the Toggl Reports API v3.
+    This endpoint supports extensive filtering by projects, clients, users, tags, duration, billable status, and more.
+
+    Args:
+        workspace_name (str, optional): Name of the workspace. Defaults to user's default workspace.
+        start_date (str, optional): Start date in YYYY-MM-DD format. Should be less than end_date.
+        end_date (str, optional): End date in YYYY-MM-DD format. Should be greater than start_date.
+        start_time (str, optional): Start time filter.
+        end_time (str, optional): End time filter.
+        description (str, optional): Description filter for time entries.
+        project_ids (List[int], optional): Project IDs to filter by. Use [null] for entries with no projects.
+        client_ids (List[int], optional): Client IDs to filter by. Use [null] for entries with no clients.
+        user_ids (List[int], optional): User IDs to filter by.
+        tag_ids (List[int], optional): Tag IDs to filter by. Use [null] for entries with no tags.
+        task_ids (List[int], optional): Task IDs to filter by. Use [null] for entries with no tasks.
+        time_entry_ids (List[int], optional): Specific time entry IDs to filter by.
+        group_ids (List[int], optional): Group IDs to filter by.
+        billable (bool, optional): Filter by billable status (premium feature).
+        min_duration_seconds (int, optional): Minimum duration in seconds.
+        max_duration_seconds (int, optional): Maximum duration in seconds.
+        rounding (int, optional): Whether time should be rounded.
+        rounding_minutes (int, optional): Rounding minutes value. Must be 0, 1, 5, 6, 10, 12, 15, 30, 60 or 240.
+
+    Returns:
+        dict: Time entries data matching the search criteria.
+        str: Error message on failure
+    """
+
+    if workspace_name is None:
+        workspace_id = await _get_default_workspace_id()
+    else:
+        workspace_id = await _get_workspace_id_by_name(workspace_name)
+
+    if isinstance(workspace_id, str):  # Error message
+        return workspace_id
+
+    # Make the API call using existing helper
+    response = await _search_time_entries_report_helper(
+        workspace_id=workspace_id,
+        type="weekly",
+        start_date=start_date,
+        end_date=end_date,
+        start_time=start_time,
+        end_time=end_time,
+        description=description,
+        project_ids=project_ids,
+        client_ids=client_ids,
+        user_ids=user_ids,
+        tag_ids=tag_ids,
+        task_ids=task_ids,
+        time_entry_ids=time_entry_ids,
+        group_ids=group_ids,
+        billable=billable,
+        min_duration_seconds=min_duration_seconds,
+        max_duration_seconds=max_duration_seconds,
+        rounding=rounding,
+        rounding_minutes=rounding_minutes
+    )
+
+    return response
+
+
+async def _search_time_entries_report_helper(workspace_id: int,
+                                             type: str,
+                                             start_date: Optional[str] = None,
+                                             end_date: Optional[str] = None,
+                                             start_time: Optional[str] = None,
+                                             end_time: Optional[str] = None,
+                                             description: Optional[str] = None,
+                                             project_ids: Optional[List[int]] = None,
+                                             client_ids: Optional[List[int]] = None,
+                                             user_ids: Optional[List[int]] = None,
+                                             tag_ids: Optional[List[int]] = None,
+                                             task_ids: Optional[List[int]] = None,
+                                             time_entry_ids: Optional[List[int]] = None,
+                                             group_ids: Optional[List[int]] = None,
+                                             billable: Optional[bool] = None,
+                                             min_duration_seconds: Optional[int] = None,
+                                             max_duration_seconds: Optional[int] = None,
+                                             grouping: Optional[str] = None,
+                                             grouped: Optional[bool] = None,
+                                             sub_grouping: Optional[str] = None,
+                                             distinguish_rates: Optional[bool] = None,
+                                             include_time_entry_ids: Optional[bool] = None,
+                                             rounding: Optional[int] = None,
+                                             rounding_minutes: Optional[int] = None,
+                                             ) -> Union[list[dict[str, str | Any]], str]:
+    """
+    Helper function to make the actual API call to search time entries and create a summary or detailed report.
+    """
+
+    url = f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/{type}/time_entries"
+
+    payload = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "startTime": start_time,
+        "endTime": end_time,
+        "description": description,
+        "project_ids": project_ids,
+        "client_ids": client_ids,
+        "user_ids": user_ids,
+        "tag_ids": tag_ids,
+        "task_ids": task_ids,
+        "time_entry_ids": time_entry_ids,
+        "group_ids": group_ids,
+        "billable": billable,
+        "min_duration_seconds": min_duration_seconds,
+        "max_duration_seconds": max_duration_seconds,
+    }
+
+    if grouping is not None:
+        payload['grouping'] = grouping
+
+    if grouped is not None:
+        payload['grouped'] = grouped
+
+    if sub_grouping is not None:
+        payload['sub_grouping'] = sub_grouping
+
+    if distinguish_rates is not None:
+        payload['distinguish_rates'] = distinguish_rates
+
+    if include_time_entry_ids is not None:
+        payload['include_time_entry_ids'] = include_time_entry_ids
+
+    if rounding is not None:
+        payload['rounding'] = rounding
+
+    if rounding_minutes is not None:
+        # Validate rounding_minutes values
+        valid_rounding = [0, 1, 5, 6, 10, 12, 15, 30, 60, 240]
+        if rounding_minutes not in valid_rounding:
+            return f"Invalid rounding_minutes value. Must be one of: {valid_rounding}"
+        payload['rounding_minutes'] = rounding_minutes
+
+    # Validation: At least one parameter must be set
+    if all(value is None for value in payload.values()):
+        return "At least one parameter must be set"
+
+    # Validation: Date range check
+    if start_date and end_date:
+        try:
+            start_dt = datetime.datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d')
+            if start_dt >= end_dt:
+                return "start_date should be less than end_date"
+        except ValueError:
+            return "Invalid date format. Use YYYY-MM-DD format"
+
+    # Validation: Duration range check
+    if (min_duration_seconds is not None and max_duration_seconds is not None and
+            min_duration_seconds >= max_duration_seconds):
+        return "min_duration_seconds should be less than max_duration_seconds"
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                url,
+                json=payload,
+                headers=headers
+            )
+            response.raise_for_status()
+
+            response_json = response.text.strip()
+
+            response_json = response_json.replace('}{', '},{')
+
+            response_json = json.loads(response_json)
+
+            formatted_response = []
+
+            for item in response_json:
+                time_entries = item.get('time_entries', [])
+
+                for entry in time_entries:
+                    date = entry.get('start')
+                    date = datetime.datetime.fromisoformat(str(date))
+                    date = str(date.date().isoformat())
+
+                    seconds = int(entry.get('seconds'))
+                    hours = seconds / 3600
+
+                    new_entry = {
+                        'id': entry.get('id'),
+                        'spent_date': date,
+                        'hours': hours,
+                        'notes': entry.get('description', ''),
+                        'project': item.get('project_id'),
+                        'task': item.get('task_id', ''),
+                        'user': {
+                            'id': item.get('user_id'),
+                            'name': item.get('username'),
+                        },
+                        'billable': item.get('billable', False),
+                    }
+
+                    formatted_response.append(new_entry)
+
+            return json.dumps(formatted_response)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                try:
+                    error_data = e.response.json()
+                    error_message = error_data.get('message', 'Bad request')
+                except:
+                    error_message = e.response.text
+                return f"Bad request: {error_message}"
+            elif e.response.status_code == 402:
+                return "Workspace needs to have required features enabled (premium subscription required)"
+            elif e.response.status_code == 403:
+                return "Workspace not found/accessible or insufficient permissions"
+            elif e.response.status_code == 500:
+                return "Internal Server Error"
+            return f"HTTP error: {e.response.status_code}"
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+@mcp.tool()
+async def get_project_users(
+        workspace_name: Optional[str] = None,
+        client_ids: Optional[List[int]] = None,
+        project_ids: Optional[List[int]] = None,
+) -> Union[dict[str, Any], str]:
+    """
+    Get a list of users in a Toggl project.
+
+    Requires organization admin permissions to access user data.
+
+    If `workspace_name` is not provided, set it as None.
+
+    Args:
+        workspace_name (str, optional): Workspace to be searched.
+        client_ids (list, int, optional): List of ID numbers of clients.
+        project_ids (list, int, optional): List of project ID numbers.
+
+    Returns:
+        dict: User data on success containing list of users on given projects.
+        str: Error message on failure
+    """
+
+    if workspace_name is None:
+        workspace_id = await _get_default_workspace_id()
+    else:
+        workspace_id = await _get_workspace_id_by_name(workspace_name)
+
+    if isinstance(workspace_id, str):  # Error message
+        return workspace_id
+
+    response = await _get_project_users_helper(
+        workspace_id=workspace_id,
+        client_ids=client_ids,
+        project_ids=project_ids,
+    )
+
+    return response
+
+
+async def _get_project_users_helper(
+        workspace_id: Optional[int] = None,
+        client_ids: Optional[List[int]] = None,
+        project_ids: Optional[List[int]] = None,
+) -> Union[dict[str, Any], str]:
+
+    url = f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/filters/project_users"
+
+    payload = {
+        "client_ids": client_ids,
+        "project_ids": project_ids,
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                url,
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                try:
+                    error_data = e.response.json()
+                    error_message = error_data.get('message', 'Bad request')
+                except:
+                    error_message = e.response.text
+                return f"Bad request: {error_message}"
+            elif e.response.status_code == 403:
+                return "Workspace not found/accessible or insufficient permissions"
+            elif e.response.status_code == 500:
+                return "Internal Server Error"
+            return f"HTTP error: {e.response.status_code}"
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+@mcp.tool()
+async def get_project_groups(
+        workspace_name: Optional[str] = None,
+        group_ids: Optional[List[int]] = None,
+        project_ids: Optional[List[int]] = None,
+) -> Union[dict[str, Any], str]:
+    """
+    Get a list of groups in a Toggl project.
+
+    Requires organization admin permissions to access user data.
+
+    If `workspace_name` is not provided, set it as None.
+
+    Args:
+        workspace_name (str, optional): Workspace to be searched.
+        group_ids (list, int, optional): List of ID numbers of groups. Needs either this or project_ids.
+        project_ids (list, int, optional): List of project ID numbers.
+
+    Returns:
+        dict: User data on success containing list of users on given projects.
+        str: Error message on failure
+    """
+
+    if workspace_name is None:
+        workspace_id = await _get_default_workspace_id()
+    else:
+        workspace_id = await _get_workspace_id_by_name(workspace_name)
+
+    if isinstance(workspace_id, str):  # Error message
+        return workspace_id
+
+    response = await _get_project_groups_helper(
+        workspace_id=workspace_id,
+        group_ids=group_ids,
+        project_ids=project_ids,
+    )
+
+    return response
+
+
+async def _get_project_groups_helper(
+        workspace_id: Optional[int] = None,
+        group_ids: Optional[List[int]] = None,
+        project_ids: Optional[List[int]] = None,
+) -> Union[dict[str, Any], str]:
+
+    url = f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/filters/project_groups"
+
+    payload = {
+        "group_ids": group_ids,
+        "project_ids": project_ids,
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                url,
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                try:
+                    error_data = e.response.json()
+                    error_message = error_data.get('message', 'Bad request')
+                except:
+                    error_message = e.response.text
+                return f"Bad request: {error_message}"
+            elif e.response.status_code == 403:
+                return "Workspace not found/accessible or insufficient permissions"
+            elif e.response.status_code == 500:
+                return "Internal Server Error"
+            return f"HTTP error: {e.response.status_code}"
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+@mcp.tool()
+async def get_organization_groups(
+        name: Optional[str] = None,
+        workspace: Optional[str] = None
+) -> Union[dict[str, Any], str]:
+    """
+    Get a list of groups in a Toggl organization with their details including their users and which workspaces they are assigned to.
+
+    Requires organization admin permissions to access user data.
+
+    If `workspace_name` is not provided, set it as None.
+
+    Args:
+        name (str, optional): The name of a group being searched for.
+        workspace (str, optional): Workspace ID. Returns groups assigned to this workspace.
+
+    Returns:
+        dict: Data on success containing list of groups with their details.
+        str: Error message on failure
+    """
+
+    response = await _get_organization_groups_helper(
+        name=name,
+        workspace=workspace
+    )
+
+    return response
+
+
+async def _get_organization_groups_helper(
+        name: Optional[str] = None,
+        workspace: Optional[str] = None
+) -> Union[dict[str, Any], str]:
+
+    url = f"https://api.track.toggl.com/api/v9/organizations/{organization_id}/groups"
+
+    payload = {
+        "name": name,
+        "workspace": workspace
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                url,
+                headers=headers,
+                params=payload
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                try:
+                    error_data = e.response.json()
+                    error_message = error_data.get('message', 'Bad request')
+                except:
+                    error_message = e.response.text
+                return f"Bad request: {error_message}"
+            elif e.response.status_code == 403:
+                return "Workspace not found/accessible or insufficient permissions"
+            elif e.response.status_code == 500:
+                return "Internal Server Error"
+            return f"HTTP error: {e.response.status_code}"
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+@mcp.tool()
+async def get_workspace_clients(
+        workspace_name: Optional[str] = None,
+        ids: Optional[List[int]] = None,
+        name: Optional[str] = None,
+) -> Union[dict[str, Any], str]:
+    """
+    Get a list of clients in a Toggl workspace.
+
+    Requires organization admin permissions to access user data.
+
+    If `workspace_name` is not provided, set it as None.
+
+    Args:
+        workspace_name (str, optional): Workspace to be searched.
+        ids (list, int, optional): List of ID numbers of clients.
+        name (str, optional): Name of client.
+
+    Returns:
+        dict: Names and ID numbers of clients in the workspace.
+        str: Error message on failure
+    """
+
+    if workspace_name is None:
+        workspace_id = await _get_default_workspace_id()
+    else:
+        workspace_id = await _get_workspace_id_by_name(workspace_name)
+
+    if isinstance(workspace_id, str):  # Error message
+        return workspace_id
+
+    response = await _get_workspace_clients_helper(
+        workspace_id=workspace_id,
+        ids=ids,
+        name=name,
+    )
+
+    return response
+
+
+async def _get_workspace_clients_helper(
+        workspace_id: Optional[int] = None,
+        ids: Optional[List[int]] = None,
+        name: Optional[str] = None,
+) -> Union[dict[str, Any], str]:
+
+    url = f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/filters/clients"
+
+    payload = {
+        "ids": ids,
+        "name": name,
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                url,
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                try:
+                    error_data = e.response.json()
+                    error_message = error_data.get('message', 'Bad request')
+                except:
+                    error_message = e.response.text
+                return f"Bad request: {error_message}"
+            elif e.response.status_code == 403:
+                return "Workspace not found/accessible or insufficient permissions"
+            elif e.response.status_code == 500:
+                return "Internal Server Error"
+            return f"HTTP error: {e.response.status_code}"
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+@mcp.tool()
+async def compare_entries(format: List[int],
+                          entries_1: List[dict],
+                          entries_2: List[dict],
+                          toggl_projects: dict,
+                          project_mapping: List[List]) -> str:
+
+    """
+    Compares a list of toggl entries against a list of Harvest entries.
+
+    Args:
+        format (list, int): List pair containing 0 and 1s pertaining to which of the entry lists are from toggl and which are from harvest. Should be of the form [0, 0] for Toggl vs Toggl comparisons, [0, 1] for Toggl vs Harvest Comparisons, [1, 1] for Harvest vs Harvest Comparisons.
+        entries_1 (list, dict): List of JSON objects containing information about time entries from system 1.
+        entries_2 (list, dict): List of JSON objects containing information about time entries from system 2.
+        toggl_projects (dict): JSON object containing information about all Toggl projects. Should be obtained from get_all_projects.
+        project_mapping (list, list): List of Lists of project mappings.
+
+    Returns:
+        str: List of JSON objects pertaining to entries without a match. 'system' parameter in objects denotes which system the entry belongs to. The first object contains total number of hours in each system.
+    """
+
+    toggl_projects_updated = toggl_projects['projects']
+
+    entries_1_updated = []
+    entries_2_updated = []
+
+    if format[0] == 0:
+        for entry in entries_1:
+            new_entry = entry.copy()
+            new_entry['system'] = 'Toggl (System 1)'
+
+            for project in toggl_projects_updated:
+                if project['id'] == entry['project']:
+                    new_entry['project'] = project['name']
+
+            entries_1_updated.append(new_entry)
+    else:
+        for entry in entries_1:
+            new_entry = entry.copy()
+            new_entry['system'] = 'Harvest (System 1)'
+
+            new_entry['hours'] = float(new_entry['hours'])
+
+            entries_1_updated.append(new_entry)
+
+    if format[1] == 0:
+        for entry in entries_2:
+            new_entry = entry.copy()
+            new_entry['system'] = 'Toggl (System 2)'
+
+            for project in toggl_projects_updated:
+                if project['id'] == entry['project']:
+                    new_entry['project'] = project['name']
+
+            entries_2_updated.append(new_entry)
+    else:
+        for entry in entries_2:
+            new_entry = entry.copy()
+            new_entry['system'] = 'Harvest (System 2)'
+
+            new_entry['hours'] = float(new_entry['hours'])
+
+            entries_2_updated.append(new_entry)
+
+    found = []
+
+    discrepancies = []
+
+    entries_1_sum = 0.0
+    entries_2_sum = 0.0
+
+    for entry in entries_1_updated:
+        entries_1_sum += float(entry['hours'])
+
+    for entry in entries_2_updated:
+        entries_2_sum += float(entry['hours'])
+
+    system_totals = {
+        'system_1': entries_1_sum,
+        'system_2': entries_2_sum
+    }
+
+    discrepancies.append(system_totals)
+
+    for entry_1 in entries_1_updated:
+        found_match = False
+        for entry_2 in entries_2_updated:
+            if entry_1['spent_date'] == entry_2['spent_date'] and entry_1['hours'] == entry_2['hours'] and entry_1['user']['name'] == entry_2['user']['name']:
+                for pair in project_mapping:
+                    if entry_1['project'] in pair and entry_2['project'] in pair:
+                        found.append(entry_1)
+                        found.append(entry_2)
+                        found_match = True
+                        break
+            if found_match:
+                break
+
+    for entry in entries_1_updated:
+        if entry not in found:
+            discrepancies.append(entry)
+
+    for entry in entries_2_updated:
+        if entry not in found:
+            discrepancies.append(entry)
+
+    return json.dumps(discrepancies)
+
+@mcp.tool()
+async def get_total_hours_toggl_harvest(toggl_entries: List[dict],
+                                        harvest_entries: List[dict],) -> str:
+    """
+    Gets total hours by system.
+
+    Args:
+        toggl_entries (list, dict): List of JSON objects containing information about Toggl time entries. Should be obtained from search_time_entries_detailed_report.
+        harvest_entries (list, dict): List of JSON objects containing information about Harvest time entries. Should be obtained from list_entries.
+
+    Returns:
+        str: JSON object for system totals.
+    """
+
+    toggl_sum = 0.0
+
+    for entry in toggl_entries:
+        toggl_sum += float(entry['hours'])
+
+    harvest_sum = 0.0
+
+    for entry in harvest_entries:
+        harvest_sum += float(entry['hours'])
+
+    system_totals = {
+        'toggl': toggl_sum,
+        'harvest': harvest_sum
+    }
+
+    return json.dumps(system_totals)
 
 if __name__ == "__main__":
     mcp.run()
