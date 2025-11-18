@@ -357,6 +357,11 @@ uv pip install --all
 
 11. Enter a prompt in the text entry box in the project. Something to the effect: of "Generate a daily report for [MONTH] [YEAR]."
 
+
+#### Limitations
+
+When using this server for comparing time entries, it should be noted that due to how Claude creates MCP tool calls, Claude will often hit the maximum message length if given more than one person to compare. You can tell Claude to continue, but the report will not be formatted correctly or contain accurate information.
+
 ## License
 
 This MCP server is licensed under the MIT License.
