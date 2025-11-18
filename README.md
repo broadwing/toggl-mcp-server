@@ -1,5 +1,7 @@
 # Toggl MCP Server
 
+Forked from: https://github.com/abhinav24jha/toggl-mcp-server
+
 Allows MCP clients to interact with Toggl Track, enabling time tracking, project management, and workspace operations through natural language.
 
 ## Features
@@ -101,6 +103,138 @@ Allows MCP clients to interact with Toggl Track, enabling time tracking, project
     - `workspace_name` (str, optional): Name of the workspace to fetch entries from. Defaults to the user's default workspace.
   - **Output**: JSON response containing a list of time entries found within the specified date range.
 
+#### Additional Tools
+
+- **get_organization_users**
+  - **Description**: Retrieves an optionally filtered list of users in an organization.
+  - **Input**:
+    - `workspaces` (List, str, optional): List of workspaces to be searched
+    - `name_or_email` (str, optional): The name or email of a user being searched for
+    - `active_status` (str, optional): Filter by user status ('active', 'inactive', 'invited')
+    - `only_admins` (bool, optional): If true returns admins only
+    - `groups` (List, str, optional): List of group IDs. Returns users belonging to these groups
+  - **Output**: JSON response containing list of users with their details.
+
+- **search_time_entries_summary_report**
+  - **Description**: Creates a summary report of time entries with various filters.
+  - **Input**:
+    - `workspace_name` (str, optional): Name of the workspace. Defaults to user's default workspace.
+    - `start_date` (str, optional): Start date in YYYY-MM-DD format. Should be less than end_date.
+    - `end_date` (str, optional): End date in YYYY-MM-DD format. Should be greater than start_date.
+    - `start_time` (str, optional): Start time filter.
+    - `end_time` (str, optional): End time filter.
+    - `description` (str, optional): Description filter for time entries.
+    - `project_ids` (List[int], optional): Project IDs to filter by. Use [null] for entries with no projects.
+    - `client_ids` (List[int], optional): Client IDs to filter by. Use [null] for entries with no clients.
+    - `user_ids` (List[int], optional): User IDs to filter by.
+    - `tag_ids` (List[int], optional): Tag IDs to filter by. Use [null] for entries with no tags.
+    - `task_ids` (List[int], optional): Task IDs to filter by. Use [null] for entries with no tasks.
+    - `time_entry_ids` (List[int], optional): Specific time entry IDs to filter by.
+    - `group_ids` (List[int], optional): Group IDs to filter by.
+    - `billable` (bool, optional): Filter by billable status (premium feature).
+    - `min_duration_seconds` (int, optional): Minimum duration in seconds.
+    - `max_duration_seconds` (int, optional): Maximum duration in seconds.
+    - `grouping` (str, optional): Grouping option for results.
+    - `sub_grouping` (str, optional): Sub-grouping option for results.
+    - `distinguish_rates` (bool, optional): Create new subgroups for each rate. Default false.
+    - `include_time_entry_ids` (bool, optional): Include time entry IDs in results. Default false.
+    - `rounding` (int, optional): Whether time should be rounded.
+    - `rounding_minutes` (int, optional): Rounding minutes value. Must be 0, 1, 5, 6, 10, 12, 15, 30, 60 or 240.
+  - **Output**: JSON response containing time entry data matching the search criteria in a summary format.
+
+- **search_time_entries_detailed_report**
+  - **Description**: Creates a detailed report of time entries with various filters.
+  - **Input**:
+    - `workspace_name` (str, optional): Name of the workspace. Defaults to user's default workspace.
+    - `start_date` (str, optional): Start date in YYYY-MM-DD format. Should be less than end_date.
+    - `end_date` (str, optional): End date in YYYY-MM-DD format. Should be greater than start_date.
+    - `start_time` (str, optional): Start time filter.
+    - `end_time` (str, optional): End time filter.
+    - `description` (str, optional): Description filter for time entries.
+    - `project_ids` (List[int], optional): Project IDs to filter by. Use [null] for entries with no projects.
+    - `client_ids` (List[int], optional): Client IDs to filter by. Use [null] for entries with no clients.
+    - `user_ids` (List[int], optional): User IDs to filter by.
+    - `tag_ids` (List[int], optional): Tag IDs to filter by. Use [null] for entries with no tags.
+    - `task_ids` (List[int], optional): Task IDs to filter by. Use [null] for entries with no tasks.
+    - `time_entry_ids` (List[int], optional): Specific time entry IDs to filter by.
+    - `group_ids` (List[int], optional): Group IDs to filter by.
+    - `billable` (bool, optional): Filter by billable status (premium feature).
+    - `min_duration_seconds` (int, optional): Minimum duration in seconds.
+    - `max_duration_seconds` (int, optional): Maximum duration in seconds.
+    - `grouped` (bool, optional): Whether to group results.
+  - **Output**: JSON response containing time entry data matching the search criteria.
+
+- **search_time_entries_weekly_report**
+  - **Description**: Creates a weekly report of time entries with various filters.
+  - **Input**:
+    - `workspace_name` (str, optional): Name of the workspace. Defaults to user's default workspace.
+    - `start_date` (str, optional): Start date in YYYY-MM-DD format. Should be less than end_date.
+    - `end_date` (str, optional): End date in YYYY-MM-DD format. Should be greater than start_date.
+    - `start_time` (str, optional): Start time filter.
+    - `end_time` (str, optional): End time filter.
+    - `description` (str, optional): Description filter for time entries.
+    - `project_ids` (List[int], optional): Project IDs to filter by. Use [null] for entries with no projects.
+    - `client_ids` (List[int], optional): Client IDs to filter by. Use [null] for entries with no clients.
+    - `user_ids` (List[int], optional): User IDs to filter by.
+    - `tag_ids` (List[int], optional): Tag IDs to filter by. Use [null] for entries with no tags.
+    - `task_ids` (List[int], optional): Task IDs to filter by. Use [null] for entries with no tasks.
+    - `time_entry_ids` (List[int], optional): Specific time entry IDs to filter by.
+    - `group_ids` (List[int], optional): Group IDs to filter by.
+    - `billable` (bool, optional): Filter by billable status (premium feature).
+    - `min_duration_seconds` (int, optional): Minimum duration in seconds.
+    - `max_duration_seconds` (int, optional): Maximum duration in seconds.
+    - `rounding` (int, optional): Whether time should be rounded.
+    - `rounding_minutes` (int, optional): Rounding minutes value. Must be 0, 1, 5, 6, 10, 12, 15, 30, 60 or 240.
+  - **Output**: JSON response containing time entry data matching the search criteria.
+
+- **get_project_users**
+  - **Description**: Retrieves a list of users in a Toggl project.
+  - **Input**:
+    - `workspace_name` (str, optional): Workspace to be searched
+    - `client_ids` (list, int, optional): List of ID numbers of clients.
+    - `project_ids` (list, int, optional): List of project ID numbers.
+  - **Output**: JSON response containing list of users with associated projects.
+
+- **get_project_groups**
+  - **Description**: Retrieves a list of groups in a Toggl project.
+  - **Input**:
+    - `workspace_name` (str, optional): Workspace to be searched
+    - `client_ids` (list, int, optional): List of ID numbers of clients.
+    - `project_ids` (list, int, optional): List of project ID numbers.
+  - **Output**: JSON response containing list of groups with associated projects.
+
+- **get_organization_groups**
+  - **Description**: Retrieves a list of groups in a Toggl organization.
+  - **Input**:
+    - `name` (str, optional): Name of group being searched for.
+    - `workspace` (str, optional): Workspace ID, returns groups assigned to this workspace.
+  - **Output**: JSON response containing list of groups meeting search criteria.
+
+- **get_workspace_clients**
+  - **Description**: Retrieves a list of clients in a Toggl workspace.
+  - **Input**:
+    - `workspace_name` (str, optional): Workspace name to be searched.
+    - `ids` (list, int, optional): List of ID numbers of clients.
+    - `name` (str, optional): Name of client.
+  - **Output**: JSON response containing list of clients meeting search criteria.
+
+- **compare_entries** Harvest entries can be obtained using list_entries from https://github.com/adrian-dotco/harvest-mcp-server.
+  - **Description**: Compares a list of entries to a list of entries from another system.
+  - **Input**:
+    - `format` (list, int): List pair containing 0 and 1s pertaining to which of the entry lists are from toggl and which are from harvest. Should be of the form [0, 0] for Toggl vs Toggl comparisons, [0, 1] for Toggl vs Harvest Comparisons, [1, 1] for Harvest vs Harvest Comparisons.
+    - `entries_1` (list, dict): List of JSON objects containing information about time entries from system 1.
+    - `entries_2` (list, dict): List of JSON objects containing information about time entries from system 2.
+    - `toggl_projects` (dict): JSON object containing information about all Toggl projects. Should be obtained from get_all_projects.
+    - `project_mapping` (list, list): List of Lists of project mappings. See prompts.md for instructions and example.
+  - **Output**: List of JSON objects pertaining to entries without a match. 'system' parameter in objects denotes which system the entry belongs to. The first object contains total number of hours in each system.
+
+- **get_total_hours_toggl_harvest**
+  - **Description**: Gets total hours by system.
+  - **Input**:
+    - `toggl_entries` (list, dict): List of JSON objects containing information about Toggl time entries. Should be obtained from search_time_entries_detailed_report.
+    - `harvest_entries` (list, dict): List of JSON objects containing information about Harvest time entries. Should be obtained from list_entries from https://github.com/broadwing/harvest-mcp-server.
+  - **Output**: JSON object for system totals.
+
 ## Getting Started
 
 ### Prerequisites
@@ -109,18 +243,6 @@ Allows MCP clients to interact with Toggl Track, enabling time tracking, project
 - uv installed for dependency management
 
 ### Environment Variables
-Create a `.env` file inside of the `mcp_toggl_server` folder with:
-```bash
-EMAIL=your_toggl_email
-PASSWORD=your_toggl_password
-```
-
-If you are using Toggl API tokens:
-```bash
-EMAIL=xxxx
-PASSWORD="api_token"
-```
-Where `xxxx` indicates your personal token
 
 ### Installation
 
@@ -147,51 +269,93 @@ uv pip install --all
 
 ### Integration with Development Tools
 
-#### VS Code + GitHub Copilot Setup
+#### Claude Setup
 
-1. Configure the MCP Server in `.vscode/mcp.json`:
+1. Configure the MCP Server in `%appdata%/Claude/claude_desktop_config.json`:
 ```json
-"servers": {
-  "toggl": {
-    "type": "stdio",
-    "command": "uv",
-    "args": [
-      "--directory",
-      "/ABSOLUTE/PATH/TO/PARENT/FOLDER/mcp_toggl_server",
-      "run",
-      "toggl_mcp_server.py"],
-    "envFile": "${workspaceFolder}/mcp_toggl_server/.env"
+{
+  "mcpServers": {
+    "toggl_mcp_server": {
+      "command": "C:\\Users\\USERNAME\\.local\\bin\\uv",
+      "args": [
+        "--directory",
+        "Path to repo\\toggl-mcp-server\\toggl-mcp-server",
+        "run",
+        "toggl_mcp_server.py",
+	"--verbose"
+      ],
+      "env": {
+        "TOGGL_EMAIL": "YOUR TOGGL EMAIL",
+	"TOGGL_PASSWORD": "YOUR TOGGL PASSWORD",
+	"ORGANIZATION_ID": "YOUR TOGGL ORGANIZATION'S ID"
+      }
+    }
   }
 }
 ```
 
-2. Update the configuration:
-   - Replace `/ABSOLUTE/PATH/TO/PARENT/FOLDER/mcp_toggl_server` with the absolute path to the server
-   - You may need to put the full path to the uv executable in the command field. You can get this by running which uv on MacOS/Linux or where uv on Windows
+2. Install https://github.com/broadwing/harvest-mcp-server.
 
-3. Enable the server:
-   - Look for the start button when hovering over the server configuration `/.vscode/mcp.json`
-   - Click start to let Copilot discover available tools
-   - Switch to agent mode in Copilot
-
-For detailed setup instructions, see:
-- [MCP Servers in VS Code](https://code.visualstudio.com/docs/copilot/chat/mcp-servers)
-- [Copilot Agent Mode](https://code.visualstudio.com/docs/copilot/chat/chat-agent-mode)
-
-### Additional MCP Client Integration
-
-The Toggl MCP Server works with any MCP-compatible client. For integration steps:
-
-1. For Claude Desktop, visit the [MCP Quick Start Guide](https://modelcontextprotocol.io/quickstart/user)
-2. For other MCP clients, consult their respective documentation for server configuration
-
-Note: Configuration typically involves specifying the server path and environment variables similar to the VS Code setup above.
-
-### Testing with MCP Inspector
-To run in development:
-```bash
-EMAIL=your_toggl_email PASSWORD=your_toggl_password mcp dev toggl_mcp_server.py
+3. Your claude_desktop_config.json should now look like:
+```json
+{
+  "mcpServers": {
+    "toggl_mcp_server": {
+      "command": "C:\\Users\\USERNAME\\.local\\bin\\uv",
+      "args": [
+        "--directory",
+        "Path to repo\\toggl-mcp-server\\toggl-mcp-server",
+        "run",
+        "toggl_mcp_server.py",
+	"--verbose"
+      ],
+      "env": {
+        "TOGGL_EMAIL": "YOUR TOGGL EMAIL",
+	"TOGGL_PASSWORD": "YOUR TOGGL PASSWORD",
+	"ORGANIZATION_ID": "YOUR TOGGL ORGANIZATION'S ID"
+      }
+    },
+    "harvest_mcp_server": {
+      "command": "node",
+      "args": [
+        "Path to repo\\harvest-mcp-server\\build\\index.js"
+      ],
+      "env": {
+        "HARVEST_ACCESS_TOKEN": "YOUR HARVEST ACCESS TOKEN",
+        "HARVEST_ACCOUNT_ID": "YOUR HARVEST ACCOUNT ID",
+        "STANDARD_WORK_DAY_HOURS": "7.5",
+        "TIMEZONE": "America/New_York"
+      },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
 ```
+4. Restart Claude desktop.
+
+#### Usage
+1. Open Claude desktop.
+
+2. Go to the "Projects" tab.
+
+3. Click "New project."
+
+4. Enter a name and description for the project.
+
+5. Click "Create project."
+
+6. In your new project, click the pencil button in the "Instructions" tab.
+
+7. Copy the contents of the "prompts.md" file into the text box.
+
+8. IMPORTANT: At the top of the instructions you will see instructions for the user, follow them and update the project mappings in step 5 with your organization's projects.
+
+9. Delete the FOR USER instruction at the top of the instructions.
+
+10. Click "Save instructions."
+
+11. Enter a prompt in the text entry box in the project. Something to the effect: of "Generate a daily report for [MONTH] [YEAR]."
 
 ## License
 
